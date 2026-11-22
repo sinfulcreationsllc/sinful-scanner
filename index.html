@@ -48,18 +48,21 @@ function lookup(c) {
 function hq() { var o = null; try { o = window.top.opener; } catch (e) {} if (!o) { try { o = window.opener; } catch (e) {} } return o; }
 document.getElementById('d').onclick = function () { try { var o = hq(); if (o) o.focus(); } catch (e) {} try { window.top.close(); } catch (e) {} };
 document.getElementById('c').onclick = function () {
-  var t = all.join('\n'); try { navigator.clipboard.writeText(t); m.textContent = 'Copied ' + all.length + ' code(s). Paste them in HQ.'; } catch (e) { m.textContent = t; } };
+  var t = all.map(function (x) { return x.n ? x.c + ' | ' + x.n : x.c; }).join('\n'); try { navigator.clipboard.writeText(t); m.textContent = 'Copied ' + all.length + ' code(s). Paste them in HQ.'; } catch (e) { m.textContent = t; } };
 function got(c) {
   var n = Date.now(); if (!c || (c === last && n - lastAt < 2500)) return; last = c; lastAt = n;
   try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) {}
   var sent = !!topic, o = hq(); if (o) { try { o.postMessage({ hqscan: c }, '*'); sent = true; } catch (e) {} }
-  all.push(c);
+  var rec = { c: c, n: '' }; all.push(rec);
   var li = document.createElement('li'); li.textContent = c + ' ';
   var s = document.createElement('small'); s.textContent = sent ? 'sending to HQ…' : 'tap Copy all, then paste in HQ'; li.appendChild(s);
+  var cp = document.createElement('button'); cp.className = 'g'; cp.textContent = 'Copy'; cp.style.cssText = 'margin:6px 0 0;padding:6px 12px;font-size:14px';
+  cp.onclick = function () { try { navigator.clipboard.writeText(rec.n ? rec.c + ' | ' + rec.n : rec.c); cp.textContent = 'Copied'; } catch (e) {} };
+  li.appendChild(cp);
   l.insertBefore(li, l.firstChild);
   m.textContent = 'Scanned ' + c + '. Looking it up…';
   var nm = document.createElement('div'); nm.style.cssText = 'font-size:15px;color:#c9a36a;margin-top:2px'; li.appendChild(nm);
-  lookup(c).then(function (n) {
+  lookup(c).then(function (n) { rec.n = n || '';
       nm.textContent = n || 'Not found in the product databases. Type the name in HQ once; HQ remembers it.';
       if (n && o) { try { o.postMessage({ hqscan: c, name: n }, '*'); } catch (e) {} }
       relay(c, n).then(function (ok) { if (topic) s.textContent = ok ? 'sent to HQ' : 'could not send, tap Copy all'; });
