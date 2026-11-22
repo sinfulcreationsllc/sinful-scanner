@@ -21,6 +21,9 @@ button.g{background:transparent;color:#f5e8d6;border:1px solid #3a332b}
    to the window that opened this tab, and is also kept in a list you can copy. No backtick strings here. */
 var v = document.getElementById('v'), m = document.getElementById('m'), l = document.getElementById('l');
 var last = '', lastAt = 0, all = [];
+var topic = (location.search.match(/[?&]t=([A-Za-z0-9_-]{16,64})/) || [])[1] || '';
+function relay(c, n) { if (!topic) return Promise.resolve(false);
+  return fetch('https://ntfy.sh/' + topic, { method: 'POST', body: JSON.stringify({ code: c, name: n || '' }) }).then(function (r) { return r.ok; }).catch(function () { return false; }); }
 function hq() { var o = null; try { o = window.top.opener; } catch (e) {} if (!o) { try { o = window.opener; } catch (e) {} } return o; }
 document.getElementById('d').onclick = function () { try { var o = hq(); if (o) o.focus(); } catch (e) {} try { window.top.close(); } catch (e) {} };
 document.getElementById('c').onclick = function () {
@@ -28,10 +31,10 @@ document.getElementById('c').onclick = function () {
 function got(c) {
   var n = Date.now(); if (!c || (c === last && n - lastAt < 2500)) return; last = c; lastAt = n;
   try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) {}
-  var sent = false, o = hq(); if (o) { try { o.postMessage({ hqscan: c }, '*'); sent = true; } catch (e) {} }
+  var sent = !!topic, o = hq(); if (o) { try { o.postMessage({ hqscan: c }, '*'); sent = true; } catch (e) {} }
   all.push(c);
   var li = document.createElement('li'); li.textContent = c + ' ';
-  var s = document.createElement('small'); s.textContent = sent ? 'sent to HQ' : 'tap Copy all, then paste in HQ'; li.appendChild(s);
+  var s = document.createElement('small'); s.textContent = sent ? 'sending to HQ…' : 'tap Copy all, then paste in HQ'; li.appendChild(s);
   l.insertBefore(li, l.firstChild);
   m.textContent = 'Scanned ' + c + '. Looking it up…';
   var nm = document.createElement('div'); nm.style.cssText = 'font-size:15px;color:#c9a36a;margin-top:2px'; li.appendChild(nm);
@@ -40,10 +43,11 @@ function got(c) {
       var p = j && j.product, n = p && p.product_name ? [p.brands, p.product_name, p.quantity].filter(Boolean).join(' · ') : '';
       nm.textContent = n || 'Not found in the product database. Type the name in HQ.';
       if (n && o) { try { o.postMessage({ hqscan: c, name: n }, '*'); } catch (e) {} }
+      relay(c, n).then(function (ok) { if (topic) s.textContent = ok ? 'sent to HQ' : 'could not send, tap Copy all'; });
       m.textContent = (n ? 'Found: ' + n : 'Scanned ' + c) + '. Scan the next one, or tap Done.';
-    }).catch(function () { nm.textContent = 'Could not look it up right now.'; m.textContent = 'Scanned ' + c + '. Scan the next one, or tap Done.'; });
+    }).catch(function () { relay(c, '').then(function (ok) { if (topic) s.textContent = ok ? 'sent to HQ' : 'could not send, tap Copy all'; }); nm.textContent = 'Could not look it up right now.'; m.textContent = 'Scanned ' + c + '. Scan the next one, or tap Done.'; });
 }
-if (!hq()) { var w = document.createElement('p'); w.style.cssText = 'color:#f09a6a;margin:0;padding:0 16px 8px'; w.textContent = 'Not connected to HQ. To send scans to HQ automatically, open this from HQ: Inventory, then Scan barcode.'; document.querySelector('header').appendChild(w); }
+if (!hq() && !topic) { var w = document.createElement('p'); w.style.cssText = 'color:#f09a6a;margin:0;padding:0 16px 8px'; w.textContent = 'Not connected to HQ. To send scans to HQ automatically, open this from HQ: Inventory, then Scan barcode.'; document.querySelector('header').appendChild(w); }
 navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }).then(function (st) {
   v.srcObject = st; v.play(); m.textContent = 'Hold a barcode inside the box. It scans by itself.';
   if ('BarcodeDetector' in window) {
