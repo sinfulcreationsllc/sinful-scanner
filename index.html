@@ -1,0 +1,51 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sinful Creations scanner</title><meta name="robots" content="noindex">
+<style>
+body{margin:0;font:16px system-ui,sans-serif;background:#1b1b1b;color:#f5e8d6}
+header{padding:14px 16px}h1{font-family:Georgia,serif;font-weight:500;font-size:22px;margin:0}p{margin:6px 0;color:#b9aa98}
+.v{position:relative;background:#000}video{display:block;width:100%;max-height:60vh;object-fit:cover}
+.aim{position:absolute;left:10%;right:10%;top:32%;bottom:32%;border:2px solid #fff;border-radius:10px}
+ul{list-style:none;margin:0;padding:8px 16px}li{padding:10px 0;border-bottom:1px solid #3a332b;font-size:18px}
+li small{color:#b9aa98;font-size:13px}
+.b{display:flex;gap:8px;padding:12px 16px}button{font:inherit;padding:10px 16px;border-radius:10px;border:0;background:#c9a36a;color:#1b1b1b}
+button.g{background:transparent;color:#f5e8d6;border:1px solid #3a332b}
+</style></head>
+<body>
+<header><h1>Sinful Creations scanner</h1><p id="m">Starting the camera…</p></header>
+<div class="v"><video id="v" playsinline muted autoplay></video><div class="aim"></div></div>
+<div class="b"><button id="d">Done, back to HQ</button><button class="g" id="c">Copy all</button></div>
+<ul id="l"></ul>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script>
+/* Stand-alone page opened from HQ (claude.ai blocks the camera inside HQ). Each code goes back to HQ with postMessage
+   to the window that opened this tab, and is also kept in a list you can copy. No backtick strings here. */
+var v = document.getElementById('v'), m = document.getElementById('m'), l = document.getElementById('l');
+var last = '', lastAt = 0, all = [];
+function hq() { var o = null; try { o = window.top.opener; } catch (e) {} if (!o) { try { o = window.opener; } catch (e) {} } return o; }
+document.getElementById('d').onclick = function () { try { var o = hq(); if (o) o.focus(); } catch (e) {} try { window.top.close(); } catch (e) {} };
+document.getElementById('c').onclick = function () {
+  var t = all.join('\n'); try { navigator.clipboard.writeText(t); m.textContent = 'Copied ' + all.length + ' code(s). Paste them in HQ.'; } catch (e) { m.textContent = t; } };
+function got(c) {
+  var n = Date.now(); if (!c || (c === last && n - lastAt < 2500)) return; last = c; lastAt = n;
+  try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) {}
+  var sent = false, o = hq(); if (o) { try { o.postMessage({ hqscan: c }, '*'); sent = true; } catch (e) {} }
+  all.push(c);
+  var li = document.createElement('li'); li.textContent = c + ' ';
+  var s = document.createElement('small'); s.textContent = sent ? 'sent to HQ' : 'tap Copy all, then paste in HQ'; li.appendChild(s);
+  l.insertBefore(li, l.firstChild);
+  m.textContent = 'Scanned ' + c + '. Scan the next one, or tap Done.';
+}
+navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }).then(function (st) {
+  v.srcObject = st; v.play(); m.textContent = 'Hold a barcode inside the box. It scans by itself.';
+  if ('BarcodeDetector' in window) {
+    var bd = new BarcodeDetector();
+    (function t() { if (v.readyState >= 2) bd.detect(v).then(function (r) { if (r[0]) got(r[0].rawValue); }).catch(function () {}); setTimeout(t, 200); })();
+    return;
+  }
+  if (!window.ZXing) { m.textContent = 'Could not load the scanner. Check your connection and reload.'; return; }
+  new ZXing.BrowserMultiFormatReader().decodeFromStream(st, v, function (r) { if (r) got(r.getText()); });
+}).catch(function (e) {
+  m.textContent = 'The camera was blocked (' + e.name + '). Allow the camera for this browser in your phone settings, then reload.';
+});
+</script>
+</body></html>
