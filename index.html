@@ -33,7 +33,15 @@ function got(c) {
   var li = document.createElement('li'); li.textContent = c + ' ';
   var s = document.createElement('small'); s.textContent = sent ? 'sent to HQ' : 'tap Copy all, then paste in HQ'; li.appendChild(s);
   l.insertBefore(li, l.firstChild);
-  m.textContent = 'Scanned ' + c + '. Scan the next one, or tap Done.';
+  m.textContent = 'Scanned ' + c + '. Looking it up…';
+  var nm = document.createElement('div'); nm.style.cssText = 'font-size:15px;color:#c9a36a;margin-top:2px'; li.appendChild(nm);
+  fetch('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(c) + '.json?fields=product_name,brands,quantity')
+    .then(function (r) { return r.json(); }).then(function (j) {
+      var p = j && j.product, n = p && p.product_name ? [p.brands, p.product_name, p.quantity].filter(Boolean).join(' · ') : '';
+      nm.textContent = n || 'Not found in the product database. Type the name in HQ.';
+      if (n && o) { try { o.postMessage({ hqscan: c, name: n }, '*'); } catch (e) {} }
+      m.textContent = (n ? 'Found: ' + n : 'Scanned ' + c) + '. Scan the next one, or tap Done.';
+    }).catch(function () { nm.textContent = 'Could not look it up right now.'; m.textContent = 'Scanned ' + c + '. Scan the next one, or tap Done.'; });
 }
 navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }).then(function (st) {
   v.srcObject = st; v.play(); m.textContent = 'Hold a barcode inside the box. It scans by itself.';
