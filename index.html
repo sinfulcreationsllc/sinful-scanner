@@ -11,7 +11,7 @@ li small{color:#b9aa98;font-size:13px}
 button.g{background:transparent;color:#f5e8d6;border:1px solid #3a332b}
 </style></head>
 <body>
-<header><h1>Sinful Creations scanner <small style="font-size:12px;color:#b9aa98">v6</small></h1><p id="m">Starting the camera…</p></header>
+<header><h1>Sinful Creations scanner <small style="font-size:12px;color:#b9aa98">v7</small></h1><p id="m">Starting the camera…</p></header>
 <div class="v"><video id="v" playsinline muted autoplay></video><div class="aim"></div></div>
 <div class="b"><button id="d">Done, back to HQ</button><button class="g" id="c">Copy all</button></div>
 <ul id="l"></ul>
@@ -22,8 +22,8 @@ button.g{background:transparent;color:#f5e8d6;border:1px solid #3a332b}
 var v = document.getElementById('v'), m = document.getElementById('m'), l = document.getElementById('l');
 var last = '', lastAt = 0, all = [];
 var topic = (location.search.match(/[?&]t=([A-Za-z0-9_-]{16,64})/) || [])[1] || '';
-function relay(c, n) { if (!topic) return Promise.resolve(false);
-  return fetch('https://ntfy.sh/' + topic, { method: 'POST', body: JSON.stringify({ code: c, name: n || '' }) }).then(function (r) { return r.ok; }).catch(function () { return false; }); }
+function relay(c, n, z) { if (!topic) return Promise.resolve(false);
+  return fetch('https://ntfy.sh/' + topic, { method: 'POST', body: JSON.stringify({ code: c, name: n || '', size: z || '' }) }).then(function (r) { return r.ok; }).catch(function () { return false; }); }
 
 /* Look a barcode up in several free product databases, food and non-food, trying UPC and EAN forms. */
 function variants(c) { var v = [c]; if (/^\d{12}$/.test(c)) v.push('0' + c); if (/^0\d{12}$/.test(c)) v.push(c.slice(1)); return v; }
@@ -31,41 +31,44 @@ function getJson(u) { return fetch(u).then(function (r) { if (!r.ok) throw 0; re
 function offLike(host, code) {
   return getJson('https://' + host + '/api/v2/product/' + encodeURIComponent(code) + '.json?fields=product_name,product_name_en,generic_name,brands,quantity')
     .then(function (j) { var p = j && j.product; var n = p && (p.product_name || p.product_name_en || p.generic_name); if (!n) throw 0;
-      return [String(p.brands || '').split(',')[0].trim(), n, p.quantity].filter(Boolean).join(' · '); }); }
+      return { n: [String(p.brands || '').split(',')[0].trim(), n].filter(Boolean).join(' · '), z: String(p.quantity || '').trim() }; }); }
 function upcitemdb(code) {
   return getJson('https://api.upcitemdb.com/prod/trial/lookup?upc=' + encodeURIComponent(code))
     .then(function (j) { var it = j && j.items && j.items[0]; if (!it || !it.title) throw 0;
       var t = it.title, b = it.brand && t.toLowerCase().indexOf(String(it.brand).toLowerCase()) < 0 ? it.brand : '';
-      return [b, t, it.size && t.indexOf(it.size) < 0 ? it.size : ''].filter(Boolean).join(' · '); }); }
-function firstOf(fns) { var i = 0; function next() { if (i >= fns.length) return Promise.resolve(''); var f = fns[i++]; return f().catch(next); } return next(); }
+      var z = String(it.size || '').trim();
+      if (!z) { var mm = t.match(/(\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|lbs?|lb|g|kg|ml|l|ct|count|pk|pack|in|inch|")\b\.?)/i); if (mm) z = mm[1]; }
+      return { n: [b, t].filter(Boolean).join(' · '), z: z }; }); }
+function firstOf(fns) { var i = 0; function next() { if (i >= fns.length) return Promise.resolve(null); var f = fns[i++]; return f().catch(next); } return next(); }
+function line(x) { return (x.n || x.z) ? x.c + ' | ' + (x.n || '') + (x.z ? ' | ' + x.z : '') : x.c; }
 function lookup(c) {
   var fns = [];
   variants(c).forEach(function (v) { fns.push(function () { return offLike('world.openfoodfacts.org', v); }); });
   variants(c).forEach(function (v) { fns.push(function () { return upcitemdb(v); }); });
   variants(c).forEach(function (v) { fns.push(function () { return offLike('world.openproductsfacts.org', v); }); });
-  return firstOf(fns);
+  return firstOf(fns).then(function (r) { return r || null; });
 }
 function hq() { var o = null; try { o = window.top.opener; } catch (e) {} if (!o) { try { o = window.opener; } catch (e) {} } return o; }
 document.getElementById('d').onclick = function () { try { var o = hq(); if (o) o.focus(); } catch (e) {} try { window.top.close(); } catch (e) {} };
 document.getElementById('c').onclick = function () {
-  var t = all.map(function (x) { return x.n ? x.c + ' | ' + x.n : x.c; }).join('\n'); try { navigator.clipboard.writeText(t); m.textContent = 'Copied ' + all.length + ' code(s). Paste them in HQ.'; } catch (e) { m.textContent = t; } };
+  var t = all.map(line).join('\n'); try { navigator.clipboard.writeText(t); m.textContent = 'Copied ' + all.length + ' code(s). Paste them in HQ.'; } catch (e) { m.textContent = t; } };
 function got(c) {
   var n = Date.now(); if (!c || (c === last && n - lastAt < 2500)) return; last = c; lastAt = n;
   try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) {}
   var sent = !!topic, o = hq(); if (o) { try { o.postMessage({ hqscan: c }, '*'); sent = true; } catch (e) {} }
-  var rec = { c: c, n: '' }; all.push(rec);
+  var rec = { c: c, n: '', z: '' }; all.push(rec);
   var li = document.createElement('li'); li.textContent = c + ' ';
   var s = document.createElement('small'); s.textContent = sent ? 'sending to HQ…' : 'tap Copy all, then paste in HQ'; li.appendChild(s);
   var cp = document.createElement('button'); cp.className = 'g'; cp.textContent = 'Copy'; cp.style.cssText = 'margin:6px 0 0;padding:6px 12px;font-size:14px';
-  cp.onclick = function () { try { navigator.clipboard.writeText(rec.n ? rec.c + ' | ' + rec.n : rec.c); cp.textContent = 'Copied'; } catch (e) {} };
+  cp.onclick = function () { try { navigator.clipboard.writeText(line(rec)); cp.textContent = 'Copied'; } catch (e) {} };
   li.appendChild(cp);
   l.insertBefore(li, l.firstChild);
   m.textContent = 'Scanned ' + c + '. Looking it up…';
   var nm = document.createElement('div'); nm.style.cssText = 'font-size:15px;color:#c9a36a;margin-top:2px'; li.appendChild(nm);
-  lookup(c).then(function (n) { rec.n = n || '';
-      nm.textContent = n || 'Not found in the product databases. Type the name in HQ once; HQ remembers it.';
-      if (n && o) { try { o.postMessage({ hqscan: c, name: n }, '*'); } catch (e) {} }
-      relay(c, n).then(function (ok) { if (topic) s.textContent = ok ? 'sent to HQ' : 'could not send, tap Copy all'; });
+  lookup(c).then(function (r) { var n = r ? r.n : '', z = r ? r.z : ''; rec.n = n; rec.z = z;
+      nm.textContent = n ? n + (z ? '  ·  Size: ' + z : '') : 'Not found in the product databases. Type the name in HQ once; HQ remembers it.';
+      if (n && o) { try { o.postMessage({ hqscan: c, name: n, size: z }, '*'); } catch (e) {} }
+      relay(c, n, z).then(function (ok) { if (topic) s.textContent = ok ? 'sent to HQ' : 'could not send, tap Copy all'; });
       m.textContent = (n ? 'Found: ' + n : 'Scanned ' + c) + '. Scan the next one, or tap Done.';
     });
 }
