@@ -24,6 +24,27 @@ var last = '', lastAt = 0, all = [];
 var topic = (location.search.match(/[?&]t=([A-Za-z0-9_-]{16,64})/) || [])[1] || '';
 function relay(c, n) { if (!topic) return Promise.resolve(false);
   return fetch('https://ntfy.sh/' + topic, { method: 'POST', body: JSON.stringify({ code: c, name: n || '' }) }).then(function (r) { return r.ok; }).catch(function () { return false; }); }
+
+/* Look a barcode up in several free product databases, food and non-food, trying UPC and EAN forms. */
+function variants(c) { var v = [c]; if (/^\d{12}$/.test(c)) v.push('0' + c); if (/^0\d{12}$/.test(c)) v.push(c.slice(1)); return v; }
+function getJson(u) { return fetch(u).then(function (r) { if (!r.ok) throw 0; return r.json(); }); }
+function offLike(host, code) {
+  return getJson('https://' + host + '/api/v2/product/' + encodeURIComponent(code) + '.json?fields=product_name,product_name_en,generic_name,brands,quantity')
+    .then(function (j) { var p = j && j.product; var n = p && (p.product_name || p.product_name_en || p.generic_name); if (!n) throw 0;
+      return [String(p.brands || '').split(',')[0].trim(), n, p.quantity].filter(Boolean).join(' · '); }); }
+function upcitemdb(code) {
+  return getJson('https://api.upcitemdb.com/prod/trial/lookup?upc=' + encodeURIComponent(code))
+    .then(function (j) { var it = j && j.items && j.items[0]; if (!it || !it.title) throw 0;
+      var t = it.title, b = it.brand && t.toLowerCase().indexOf(String(it.brand).toLowerCase()) < 0 ? it.brand : '';
+      return [b, t, it.size && t.indexOf(it.size) < 0 ? it.size : ''].filter(Boolean).join(' · '); }); }
+function firstOf(fns) { var i = 0; function next() { if (i >= fns.length) return Promise.resolve(''); var f = fns[i++]; return f().catch(next); } return next(); }
+function lookup(c) {
+  var fns = [];
+  variants(c).forEach(function (v) { fns.push(function () { return offLike('world.openfoodfacts.org', v); }); });
+  variants(c).forEach(function (v) { fns.push(function () { return upcitemdb(v); }); });
+  variants(c).forEach(function (v) { fns.push(function () { return offLike('world.openproductsfacts.org', v); }); });
+  return firstOf(fns);
+}
 function hq() { var o = null; try { o = window.top.opener; } catch (e) {} if (!o) { try { o = window.opener; } catch (e) {} } return o; }
 document.getElementById('d').onclick = function () { try { var o = hq(); if (o) o.focus(); } catch (e) {} try { window.top.close(); } catch (e) {} };
 document.getElementById('c').onclick = function () {
@@ -38,14 +59,12 @@ function got(c) {
   l.insertBefore(li, l.firstChild);
   m.textContent = 'Scanned ' + c + '. Looking it up…';
   var nm = document.createElement('div'); nm.style.cssText = 'font-size:15px;color:#c9a36a;margin-top:2px'; li.appendChild(nm);
-  fetch('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(c) + '.json?fields=product_name,brands,quantity')
-    .then(function (r) { return r.json(); }).then(function (j) {
-      var p = j && j.product, n = p && p.product_name ? [p.brands, p.product_name, p.quantity].filter(Boolean).join(' · ') : '';
-      nm.textContent = n || 'Not found in the product database. Type the name in HQ.';
+  lookup(c).then(function (n) {
+      nm.textContent = n || 'Not found in the product databases. Type the name in HQ once; HQ remembers it.';
       if (n && o) { try { o.postMessage({ hqscan: c, name: n }, '*'); } catch (e) {} }
       relay(c, n).then(function (ok) { if (topic) s.textContent = ok ? 'sent to HQ' : 'could not send, tap Copy all'; });
       m.textContent = (n ? 'Found: ' + n : 'Scanned ' + c) + '. Scan the next one, or tap Done.';
-    }).catch(function () { relay(c, '').then(function (ok) { if (topic) s.textContent = ok ? 'sent to HQ' : 'could not send, tap Copy all'; }); nm.textContent = 'Could not look it up right now.'; m.textContent = 'Scanned ' + c + '. Scan the next one, or tap Done.'; });
+    });
 }
 if (!hq() && !topic) { var w = document.createElement('p'); w.style.cssText = 'color:#f09a6a;margin:0;padding:0 16px 8px'; w.textContent = 'Not connected to HQ. To send scans to HQ automatically, open this from HQ: Inventory, then Scan barcode.'; document.querySelector('header').appendChild(w); }
 navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }).then(function (st) {
