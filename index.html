@@ -43,6 +43,7 @@ function got(c) {
       m.textContent = (n ? 'Found: ' + n : 'Scanned ' + c) + '. Scan the next one, or tap Done.';
     }).catch(function () { nm.textContent = 'Could not look it up right now.'; m.textContent = 'Scanned ' + c + '. Scan the next one, or tap Done.'; });
 }
+if (!hq()) { var w = document.createElement('p'); w.style.cssText = 'color:#f09a6a;margin:0;padding:0 16px 8px'; w.textContent = 'Not connected to HQ. To send scans to HQ automatically, open this from HQ: Inventory, then Scan barcode.'; document.querySelector('header').appendChild(w); }
 navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }).then(function (st) {
   v.srcObject = st; v.play(); m.textContent = 'Hold a barcode inside the box. It scans by itself.';
   if ('BarcodeDetector' in window) {
